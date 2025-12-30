@@ -3,6 +3,7 @@ import { ArrowLeft, Building2, Users, AlertCircle } from 'lucide-react';
 import { Client, supabase } from '../lib/supabase';
 import { ClientSelectionModal } from './ClientSelectionModal';
 
+
 interface InvoiceFormProps {
   onBack: () => void;
   templateType: string;
@@ -105,68 +106,83 @@ export function InvoiceForm({ onBack, templateType, onInvoiceCreated, userCompan
   const tax = subtotal * 0.01;
   const total = subtotal + tax;
 
-  const saveInvoice = async (status: 'draft' | 'sent') => {
-    if (!validateForm()) return;
+ const saveInvoice = async (status: 'draft' | 'sent') => {
+  if (!validateForm()) return;
 
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
+  setLoading(true);
+  setError(null);
+  setSuccess(null);
 
-    try {
-      const user = await getCurrentUser();
-      if (!user) {
-        setError('You must be logged in to create an invoice');
-        setLoading(false);
-        return;
-      }
+  try {
+    // ✅ Get logged-in user (CORRECT WAY)
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-      const invoiceNumber = generateInvoiceNumber();
-      const { data, error: insertError } = await supabase
-        .from('invoices')
-        .insert([
-          {
-            user_id: user.id,
-            invoice_number: invoiceNumber,
-            company_name: companyInfo.name,
-            company_address: companyInfo.address,
-            company_email: companyInfo.email,
-            company_phone: companyInfo.phone,
-            company_tax_id: companyInfo.taxId,
-            client_id: selectedClient.id,
-            client_name: selectedClient.name,
-            client_email: selectedClient.email,
-            client_phone: selectedClient.phone,
-            client_address: selectedClient.address,
-            invoice_date: invoiceDate,
-            due_date: dueDate || null,
-            template_type: templateType,
-            items: items.filter(item => item.description),
-            subtotal: subtotal,
-            tax_amount: tax,
-            total_amount: total,
-            notes: notes,
-            status: status
-          }
-        ])
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-
-      if (data) {
-        setSuccess(`Invoice ${status === 'draft' ? 'saved as draft' : 'created'} successfully!`);
-        setTimeout(() => {
-          onInvoiceCreated?.();
-          onBack();
-        }, 1500);
-      }
-    } catch (err) {
-      console.error('Error saving invoice:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save invoice');
-    } finally {
+    if (authError || !user) {
+      setError('You must be logged in to create an invoice');
       setLoading(false);
+      return;
     }
-  };
+
+    const invoiceNumber = generateInvoiceNumber();
+
+    const { data, error: insertError } = await supabase
+      .from('invoices')
+      .insert([
+        {
+          user_id: user.id, // ✅ FIXED
+          invoice_number: invoiceNumber,
+
+          company_name: companyInfo.name,
+          company_address: companyInfo.address,
+          company_email: companyInfo.email,
+          company_phone: companyInfo.phone,
+          company_tax_id: companyInfo.taxId,
+
+          client_id: selectedClient!.id,
+          client_name: selectedClient!.name,
+          client_email: selectedClient!.email,
+          client_phone: selectedClient!.phone,
+          client_address: selectedClient!.address,
+
+          invoice_date: invoiceDate,
+          due_date: dueDate || null,
+          template_type: templateType,
+
+          items: items.filter(item => item.description),
+          subtotal: subtotal,
+          tax_amount: tax,
+          total_amount: total,
+
+          notes: notes,
+          status: status,
+        },
+      ])
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+
+    setSuccess(
+      status === 'draft'
+        ? 'Invoice saved as draft successfully!'
+        : 'Invoice created successfully!'
+    );
+
+    setTimeout(() => {
+      onInvoiceCreated?.();
+      onBack();
+    }, 1200);
+  } catch (err) {
+    console.error('Error saving invoice:', err);
+    setError(err instanceof Error ? err.message : 'Failed to save invoice');
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="min-h-screen bg-gray-50">
